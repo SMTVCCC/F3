@@ -1,0 +1,13 @@
+{
+  "name": "private-chat",
+  "version": "1.0.0",
+  "description": "基于Socket.io的私密聊天应用",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.5.4"
+  }
+}

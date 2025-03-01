@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级私密聊天</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="connection-panel" id="connectionPanel">
+            <h1>私密聊天</h1>
+            <div class="initial-buttons" id="initialButtons">
+                <button id="createChatBtn">创建加密聊天</button>
+                <button id="joinChatBtn">加入加密聊天</button>
+            </div>
+            <div class="connection-form" id="connectionForm" style="display: none;">
+                <input type="text" id="connectionCode" placeholder="请输入连接码">
+                <button id="connectBtn">连接</button>
+            </div>
+            <div class="connection-code" id="connectionCodeDisplay" style="display: none;">
+                <p>您的连接码（双击复制）：</p>
+                <div id="codeDisplay" class="code-display"></div>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer" style="display: none;">
+            <div class="chat-header">
+                <span id="partnerStatus">对方已连接</span>
+                <button id="disconnectBtn">断开连接</button>
+            </div>
+            <div class="messages" id="messagesContainer"></div>
+            <div class="input-area">
+                <textarea id="messageInput" placeholder="输入消息..." rows="3"></textarea>
+                <button id="sendBtn">发送</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
