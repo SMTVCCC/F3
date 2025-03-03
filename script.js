@@ -30,6 +30,7 @@ class ChatApp {
         document.getElementById('groupChatBtn').addEventListener('click', () => {
             document.getElementById('initialButtons').style.display = 'none';
             document.getElementById('connectionCodeDisplay').style.display = 'block';
+            document.getElementById('setNameBtn').style.display = 'block'; // 显示名字设置按钮
             this.isGroupChat = true;
             this.setupPeer();
         });
@@ -80,14 +81,10 @@ class ChatApp {
                 if (this.isGroupChat) {
                     // 群聊模式：允许多个连接
                     this.setupGroupConnection(conn);
-                    // 显示名字设置按钮
-                    document.getElementById('setNameBtn').style.display = 'block';
                 } else {
                     // 一对一聊天模式
                     this.connection = conn;
                     this.setupConnection(conn);
-                    // 隐藏名字设置按钮
-                    document.getElementById('setNameBtn').style.display = 'none';
                 }
                 document.getElementById('connectionPanel').style.display = 'none';
                 document.getElementById('chatContainer').style.display = 'block';
@@ -137,7 +134,10 @@ class ChatApp {
             console.log('连接已打开');
             this.updatePartnerStatus(true);
             // 发送一个心跳包确认连接
-            conn.send('__ping__');
+            conn.send({
+                type: 'ping',
+                message: '__ping__'
+            });
         });
 
         conn.on('close', () => {
@@ -154,12 +154,18 @@ class ChatApp {
         });
 
         conn.on('data', (data) => {
-            if (data === '__ping__') {
-                conn.send('__pong__');
+            if (data.type === 'ping' && data.message === '__ping__') {
+                conn.send({
+                    type: 'pong',
+                    message: '__pong__'
+                });
                 return;
             }
-            if (data === '__pong__') return;
-            this.displayMessage(data, false);
+            if (data.type === 'pong' && data.message === '__pong__') return;
+            
+            if (data.type === 'message') {
+                this.displayMessage(data.message, false);
+            }
         });
     }
 
@@ -171,6 +177,8 @@ class ChatApp {
                 username: ''
             });
             this.updateGroupStatus();
+            // 显示名字设置按钮（无论是创建者还是加入者）
+            document.getElementById('setNameBtn').style.display = 'block';
             conn.send({
                 type: 'system',
                 message: '新成员加入群聊'
@@ -273,16 +281,18 @@ class ChatApp {
                 this.setupGroupConnection(conn);
                 // 显示名字设置按钮
                 document.getElementById('setNameBtn').style.display = 'block';
+                document.getElementById('connectionPanel').style.display = 'none';
+                document.getElementById('chatContainer').style.display = 'block';
             } else {
                 // 一对一聊天模式
                 this.connection = this.peer.connect(this.connectionCode);
                 this.setupConnection(this.connection);
                 // 隐藏名字设置按钮
                 document.getElementById('setNameBtn').style.display = 'none';
+                document.getElementById('connectionPanel').style.display = 'none';
+                document.getElementById('chatContainer').style.display = 'block';
             }
 
-            document.getElementById('connectionPanel').style.display = 'none';
-            document.getElementById('chatContainer').style.display = 'block';
             document.getElementById('partnerStatus').textContent = this.isGroupChat ? '等待群聊成员加入...' : '等待对方连接...';
             document.getElementById('partnerStatus').style.color = '#f39c12';
         } catch (error) {
@@ -313,8 +323,22 @@ class ChatApp {
         
         if (this.isGroupChat) {
             // 群聊模式：向所有连接发送消息
-            this.broadcastToGroup(message);
+            const messageData = {
+                type: 'message',
+                message: message,
+                userId: this.userId,
+                username: this.username || '我'
+            };
+            
+            // 显示自己的消息
             this.displayMessage(message, true, this.username || '我');
+            
+            // 发送给其他人
+            this.connections.forEach((peer) => {
+                if (peer.connection.open) {
+                    peer.connection.send(messageData);
+                }
+            });
         } else if (this.connection && this.connection.open) {
             // 一对一聊天模式
             this.connection.send({
