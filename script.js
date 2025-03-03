@@ -5,6 +5,9 @@ class ChatApp {
         this.connectionCode = '';
         this.userId = this.generateUserId();
         this.partnerConnected = false;
+        this.connections = new Map(); // 用于存储群聊的所有连接
+        this.isGroupChat = false; // 标记是否为群聊模式
+        this.username = ''; // 用户名
         this.setupEventListeners();
     }
 
@@ -13,12 +16,21 @@ class ChatApp {
         document.getElementById('createChatBtn').addEventListener('click', () => {
             document.getElementById('initialButtons').style.display = 'none';
             document.getElementById('connectionCodeDisplay').style.display = 'block';
+            this.isGroupChat = false;
             this.setupPeer();
         });
 
         document.getElementById('joinChatBtn').addEventListener('click', () => {
             document.getElementById('initialButtons').style.display = 'none';
             document.getElementById('connectionForm').style.display = 'block';
+            this.isGroupChat = false;
+            this.setupPeer();
+        });
+
+        document.getElementById('groupChatBtn').addEventListener('click', () => {
+            document.getElementById('initialButtons').style.display = 'none';
+            document.getElementById('connectionCodeDisplay').style.display = 'block';
+            this.isGroupChat = true;
             this.setupPeer();
         });
 
@@ -46,6 +58,18 @@ class ChatApp {
                     });
             }
         });
+
+        // 添加名字设置按钮事件
+        document.getElementById('setNameBtn').addEventListener('click', () => {
+            const newName = prompt('请输入您的名字：', this.username);
+            if (newName && newName.trim()) {
+                this.username = newName.trim();
+                // 广播用户名更改
+                if (this.isGroupChat) {
+                    this.broadcastToGroup('', null, 'name_change');
+                }
+            }
+        });
     }
 
     setupPeer() {
@@ -53,12 +77,21 @@ class ChatApp {
             this.peer = new Peer(this.userId);
             
             this.peer.on('connection', (conn) => {
-                this.connection = conn;
-                this.setupConnection(conn);
-                // 当收到连接请求时，自动进入聊天界面
+                if (this.isGroupChat) {
+                    // 群聊模式：允许多个连接
+                    this.setupGroupConnection(conn);
+                    // 显示名字设置按钮
+                    document.getElementById('setNameBtn').style.display = 'block';
+                } else {
+                    // 一对一聊天模式
+                    this.connection = conn;
+                    this.setupConnection(conn);
+                    // 隐藏名字设置按钮
+                    document.getElementById('setNameBtn').style.display = 'none';
+                }
                 document.getElementById('connectionPanel').style.display = 'none';
                 document.getElementById('chatContainer').style.display = 'block';
-                document.getElementById('partnerStatus').textContent = '对方已连接';
+                document.getElementById('partnerStatus').textContent = this.isGroupChat ? '群聊已连接' : '对方已连接';
                 document.getElementById('partnerStatus').style.color = '#2ecc71';
             });
 
@@ -99,41 +132,6 @@ class ChatApp {
         return Math.random().toString(36).substring(2, 10);
     }
 
-    connect() {
-        const codeInput = document.getElementById('connectionCode');
-        this.connectionCode = codeInput.value.trim();
-        
-        if (!this.connectionCode) {
-            alert('请输入对方的连接码！');
-            return;
-        }
-
-        // 如果连接码是自己的，不允许连接
-        if (this.connectionCode === this.userId) {
-            alert('不能连接自己的连接码！');
-            return;
-        }
-
-        const connectBtn = document.getElementById('connectBtn');
-        connectBtn.disabled = true;
-        connectBtn.textContent = '连接中...';
-
-        try {
-            this.connection = this.peer.connect(this.connectionCode);
-            this.setupConnection(this.connection);
-
-            // 更新UI
-            document.getElementById('connectionPanel').style.display = 'none';
-            document.getElementById('chatContainer').style.display = 'block';
-            document.getElementById('partnerStatus').textContent = '等待对方连接...';
-            document.getElementById('partnerStatus').style.color = '#f39c12';
-        } catch (error) {
-            console.error('连接失败:', error);
-            alert('创建连接失败，请重试');
-            this.disconnect();
-        }
-    }
-
     setupConnection(conn) {
         conn.on('open', () => {
             console.log('连接已打开');
@@ -164,7 +162,136 @@ class ChatApp {
             this.displayMessage(data, false);
         });
     }
-    
+
+    setupGroupConnection(conn) {
+        conn.on('open', () => {
+            console.log('群聊连接已打开:', conn.peer);
+            this.connections.set(conn.peer, {
+                connection: conn,
+                username: ''
+            });
+            this.updateGroupStatus();
+            conn.send({
+                type: 'system',
+                message: '新成员加入群聊'
+            });
+            // 发送自己的用户名
+            if (this.username) {
+                conn.send({
+                    type: 'name_change',
+                    userId: this.userId,
+                    username: this.username
+                });
+            }
+        });
+
+        conn.on('close', () => {
+            console.log('群聊连接已关闭:', conn.peer);
+            this.connections.delete(conn.peer);
+            this.updateGroupStatus();
+            this.displayMessage(`用户 ${this.getDisplayName(conn.peer)} 已离开群聊`, 'system');
+        });
+
+        conn.on('error', (err) => {
+            console.error('群聊连接错误:', err);
+            this.connections.delete(conn.peer);
+            this.updateGroupStatus();
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'system') {
+                this.displayMessage(data.message, 'system');
+            } else if (data.type === 'name_change') {
+                // 更新用户名
+                if (this.connections.has(data.userId)) {
+                    this.connections.get(data.userId).username = data.username;
+                }
+            } else if (data.type === 'message') {
+                const senderName = this.getDisplayName(conn.peer);
+                this.displayMessage(data.message, false, senderName);
+                // 转发消息给其他群聊成员
+                this.broadcastToGroup(data.message, conn.peer);
+            }
+        });
+    }
+
+    getDisplayName(userId) {
+        if (userId === this.userId) {
+            return this.username || '我';
+        }
+        const peer = this.connections.get(userId);
+        return peer && peer.username ? peer.username : userId.substring(0, 6);
+    }
+
+    updateGroupStatus() {
+        const statusElement = document.getElementById('partnerStatus');
+        const count = this.connections.size;
+        statusElement.textContent = `群聊成员数: ${count + 1}`; // +1 包括自己
+        statusElement.style.color = count > 0 ? '#2ecc71' : '#e74c3c';
+    }
+
+    broadcastToGroup(message, excludePeer = null, type = 'message') {
+        const data = {
+            type: type,
+            message: message
+        };
+
+        if (type === 'name_change') {
+            data.userId = this.userId;
+            data.username = this.username;
+        }
+
+        this.connections.forEach((peer, peerId) => {
+            if (peerId !== excludePeer && peer.connection.open) {
+                peer.connection.send(data);
+            }
+        });
+    }
+
+    connect() {
+        const codeInput = document.getElementById('connectionCode');
+        this.connectionCode = codeInput.value.trim();
+        
+        if (!this.connectionCode) {
+            alert('请输入连接码！');
+            return;
+        }
+
+        if (this.connectionCode === this.userId) {
+            alert('不能连接自己的连接码！');
+            return;
+        }
+
+        const connectBtn = document.getElementById('connectBtn');
+        connectBtn.disabled = true;
+        connectBtn.textContent = '连接中...';
+
+        try {
+            if (this.isGroupChat) {
+                // 群聊模式：建立新连接
+                const conn = this.peer.connect(this.connectionCode);
+                this.setupGroupConnection(conn);
+                // 显示名字设置按钮
+                document.getElementById('setNameBtn').style.display = 'block';
+            } else {
+                // 一对一聊天模式
+                this.connection = this.peer.connect(this.connectionCode);
+                this.setupConnection(this.connection);
+                // 隐藏名字设置按钮
+                document.getElementById('setNameBtn').style.display = 'none';
+            }
+
+            document.getElementById('connectionPanel').style.display = 'none';
+            document.getElementById('chatContainer').style.display = 'block';
+            document.getElementById('partnerStatus').textContent = this.isGroupChat ? '等待群聊成员加入...' : '等待对方连接...';
+            document.getElementById('partnerStatus').style.color = '#f39c12';
+        } catch (error) {
+            console.error('连接失败:', error);
+            alert('创建连接失败，请重试');
+            this.disconnect();
+        }
+    }
+
     updatePartnerStatus(isConnected) {
         this.partnerConnected = isConnected;
         const statusElement = document.getElementById('partnerStatus');
@@ -184,38 +311,73 @@ class ChatApp {
         
         if (!message) return;
         
-        if (this.connection && this.connection.open) {
-            this.connection.send(message);
+        if (this.isGroupChat) {
+            // 群聊模式：向所有连接发送消息
+            this.broadcastToGroup(message);
+            this.displayMessage(message, true, this.username || '我');
+        } else if (this.connection && this.connection.open) {
+            // 一对一聊天模式
+            this.connection.send({
+                type: 'message',
+                message: message
+            });
             this.displayMessage(message, true);
-            input.value = '';
         }
+        input.value = '';
     }
 
-    displayMessage(message, isSent) {
+    displayMessage(message, type, username = null) {
         const messagesContainer = document.getElementById('messagesContainer');
         const messageElement = document.createElement('div');
-        messageElement.className = `message ${isSent ? 'sent' : 'received'}`;
-        messageElement.textContent = message;
+        
+        if (type === 'system') {
+            messageElement.className = 'message system';
+            messageElement.style.textAlign = 'center';
+            messageElement.style.color = '#666';
+            messageElement.style.fontStyle = 'italic';
+            messageElement.textContent = message;
+        } else {
+            messageElement.className = `message ${type === true ? 'sent' : 'received'}`;
+            messageElement.textContent = message;
+            
+            if (username && this.isGroupChat) {
+                const usernameElement = document.createElement('span');
+                usernameElement.className = 'username';
+                usernameElement.textContent = username;
+                messageElement.appendChild(usernameElement);
+            }
+        }
+        
         messagesContainer.appendChild(messageElement);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
     disconnect() {
-        if (this.connection) {
+        if (this.isGroupChat) {
+            // 群聊模式：关闭所有连接
+            this.connections.forEach(conn => conn.connection.close());
+            this.connections.clear();
+        } else if (this.connection) {
+            // 一对一聊天模式
             this.connection.close();
+            this.connection = null;
         }
+        
         if (this.peer) {
             this.peer.disconnect();
         }
         
-        this.connection = null;
         this.peer = null;
         this.partnerConnected = false;
+        this.isGroupChat = false;
         
         document.getElementById('connectionPanel').style.display = 'block';
         document.getElementById('chatContainer').style.display = 'none';
         document.getElementById('messagesContainer').innerHTML = '';
         document.getElementById('messageInput').value = '';
+        document.getElementById('initialButtons').style.display = 'flex';
+        document.getElementById('connectionForm').style.display = 'none';
+        document.getElementById('connectionCodeDisplay').style.display = 'none';
         
         const connectBtn = document.getElementById('connectBtn');
         connectBtn.disabled = false;

@@ -286,6 +286,21 @@ button:hover {
     border-bottom-left-radius: 4px;
 }
 
+.message.system {
+    max-width: 100%;
+    background: transparent;
+    padding: 8px 16px;
+    margin: 8px 0;
+    font-size: 0.9em;
+    color: #666;
+    text-align: center;
+}
+
+.message.system::before {
+    content: '•';
+    margin-right: 5px;
+}
+
 .input-area {
     display: flex;
     gap: 12px;
@@ -367,4 +382,26 @@ button:hover {
 .connection-info-panel textarea {
     width: 100%;
     margin-bottom: 10px;
+}
+
+.name-btn {
+    padding: 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.name-btn:hover {
+    background: #5a67d8;
+    transform: translateY(-1px);
+}
+
+.message .username {
+    display: block;
+    font-size: 0.8em;
+    color: #718096;
+    margin-top: 4px;
 }
